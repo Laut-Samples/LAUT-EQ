@@ -93,21 +93,21 @@ void LAUTEQAudioProcessor::changeProgramName (int index, const juce::String& new
 //==============================================================================
 void LAUTEQAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    // Use this method as the place to do any pre-playback
-    // initialisation that you need..
     
+    
+    // This structure is passed into a DSP algorithm's prepare() method, and contains
+    // information about various aspects of the context in which it can expect to be called.
     juce::dsp::ProcessSpec spec;
-    
     spec.maximumBlockSize = samplesPerBlock;
-    
     spec.numChannels = 1;
-    
     spec.sampleRate = sampleRate;
     
+    
+    // prepare process spec
     leftChain.prepare(spec);
     rightChain.prepare(spec);
     
-
+    
     updateFilters();
     
 }
@@ -161,20 +161,81 @@ void LAUTEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
 
-
+    // Dist
+    for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+    {
+        auto* channelData = buffer.getWritePointer(channel);
+        
+        for (int i = 0; i < buffer.getNumSamples(); ++i) {
+            
+            auto input = channelData[i];
+            auto cleanOut = channelData[i];
+            
+            if (menuChoice == 1)
+                //Hard Clipping
+            {
+                if (input > thresh)
+                {
+                    input = thresh;
+                }
+                else if (input < -thresh)
+                {
+                    input = -thresh;
+                }
+                else
+                {
+                    input = input;
+                }
+            }
+            if (menuChoice == 2)
+                //Soft Clipping Exp
+            {
+                if (input > thresh)
+                {
+                    input = 1.0f - expf(-input);
+                }
+                else
+                {
+                    input = -1.0f + expf(input);
+                }
+            }
+            if (menuChoice == 3)
+                //Half-Wave Rectifier
+            {
+                if (input > thresh)
+                {
+                    input = input;
+                }
+                else
+                {
+                    input = 0;
+                }
+            }
+            channelData[i] = ((1 - mix) * cleanOut) + (mix * input);
+        }
+    }
+    
+    // Jump to update Filter function
     updateFilters();
     
-    
+    // create dsp sample block initialized with buffer
     juce::dsp::AudioBlock<float> block(buffer);
     
-    auto leftBlock = block.getSingleChannelBlock(0);
-    auto rightBlock = block.getSingleChannelBlock(1);
+    /** Returns an AudioBlock that represents one of the channels in this block. */
+    auto leftBlock = block.getSingleChannelBlock(0);                                // get block channel 0 and store in leftBlock
+    auto rightBlock = block.getSingleChannelBlock(1);                               // get block channel 1 and store in rightBlock
     
-    juce::dsp::ProcessContextReplacing<float> leftContext(leftBlock);
-    juce::dsp::ProcessContextReplacing<float> rightContext(rightBlock);
     
-    leftChain.process(leftContext);
-    rightChain.process(rightContext);
+    //This context is intended for use in situations where a single block is being used
+    //    for both the input and output, so it will return the same object for both its
+    //        getInputBlock() and getOutputBlock() methods.
+            
+    juce::dsp::ProcessContextReplacing<float> leftContext(leftBlock);               // replace leftcontext with leftBlock
+    juce::dsp::ProcessContextReplacing<float> rightContext(rightBlock);             // replace rightcontext with rightBlock
+    
+    /** Process `context` through all inner processors in sequence. */
+    leftChain.process(leftContext);                                                 // process replacing
+    rightChain.process(rightContext);                                               // process replacing
     
 }
 
@@ -187,8 +248,8 @@ bool LAUTEQAudioProcessor::hasEditor() const
 juce::AudioProcessorEditor* LAUTEQAudioProcessor::createEditor()
 
 {
-    //    return new LAUTEQAudioProcessorEditor (*this);
-    return new juce::GenericAudioProcessorEditor(*this);
+        return new LAUTEQAudioProcessorEditor (*this);
+    //return new juce::GenericAudioProcessorEditor(*this);
 }
 
 //==============================================================================
@@ -197,18 +258,28 @@ void LAUTEQAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
     // You should use this method to store your parameters in the memory block.
     // You could do that either as raw data, or use the XML or ValueTree classes
     // as intermediaries to make it easy to save and load complex data.
+    juce::MemoryOutputStream mos(destData, true);
+    apvts.state.writeToStream(mos);
 }
 
 void LAUTEQAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
     // You should use this method to restore your parameters from this memory block,
     // whose contents will have been created by the getStateInformation() call.
+    
+    auto tree = juce::ValueTree::readFromData(data, sizeInBytes);
+    if( tree.isValid() )
+    {
+        apvts.replaceState(tree);
+        updateFilters();
+    }
 }
 
 ChainSettings getChainSettings(juce::AudioProcessorValueTreeState& apvts)
 {
     ChainSettings settings;
     
+    // points to the parameter id and change values in processor
     settings.lowCutFreq = apvts.getRawParameterValue("LowCut Freq")->load();
     settings.highCutFreq = apvts.getRawParameterValue("HighCut Freq")->load();
     settings.peakFreq = apvts.getRawParameterValue("Peak Freq")->load();
@@ -220,14 +291,15 @@ ChainSettings getChainSettings(juce::AudioProcessorValueTreeState& apvts)
     return settings;
 }
 
-// PEAK
+// PEAK processor change
 
 void LAUTEQAudioProcessor::updatePeakFilter(const ChainSettings &chainSettings)
 {
-    auto peakCoefficients = juce::dsp::IIR::Coefficients<float>::makePeakFilter(getSampleRate(),
-                                                                                chainSettings.peakFreq,
-                                                                                chainSettings.peakQuality,
-                                                                                juce::Decibels::decibelsToGain(chainSettings.peakGainInDecibels));
+    // define peak filter
+    auto peakCoefficients = juce::dsp::IIR::Coefficients<float>::makePeakFilter(getSampleRate(),                        // sample rate
+                                                                                chainSettings.peakFreq,                 // get settings from apvts string fader
+                                                                                chainSettings.peakQuality,              // get settings from apvts string peak q
+                                                                                juce::Decibels::decibelsToGain(chainSettings.peakGainInDecibels)); // range
     
     updateCoefficients(leftChain.template get<ChainPositions::Peak>().coefficients, peakCoefficients);
     updateCoefficients(rightChain.template get<ChainPositions::Peak>().coefficients, peakCoefficients);
@@ -238,10 +310,11 @@ void LAUTEQAudioProcessor::updateCoefficients(Coefficients& old, const Coefficie
         *old = *replacements;
     }
 
-//LOWCUT
+//LOWCUT processor change
 
 void LAUTEQAudioProcessor::updateLowCutFilters(const ChainSettings &chainSettings)
 {
+    
     auto cutCoefficients = juce::dsp::FilterDesign<float>::designIIRHighpassHighOrderButterworthMethod(chainSettings.lowCutFreq, getSampleRate(), 2 * (chainSettings.lowCutSlope +1));
     
     auto& leftLowCut = leftChain.get<ChainPositions::LowCut>();
@@ -254,7 +327,7 @@ void LAUTEQAudioProcessor::updateLowCutFilters(const ChainSettings &chainSetting
 }
 
 
-// HIGHCUT
+// HIGHCUT processor change
 
     void LAUTEQAudioProcessor::updateHighCutFilters(const ChainSettings &chainSettings)
 {
@@ -272,7 +345,7 @@ void LAUTEQAudioProcessor::updateLowCutFilters(const ChainSettings &chainSetting
 }
 
 
-// Update Filters
+// Update Filters if used
 
 void LAUTEQAudioProcessor::updateFilters()
 {
@@ -284,6 +357,7 @@ void LAUTEQAudioProcessor::updateFilters()
 }
 
 
+// Define Parameter and layout
 
     juce::AudioProcessorValueTreeState::ParameterLayout LAUTEQAudioProcessor::createParameterLayout()
 {
@@ -314,6 +388,8 @@ void LAUTEQAudioProcessor::updateFilters()
                                                            juce::NormalisableRange<float>(0.1f, 10.f, 0.05f, 1.f),
                                                            1.f));
     
+    
+    
     juce::StringArray stringArray;
     for( int i = 0; i < 4; ++i )
     {
@@ -323,9 +399,23 @@ void LAUTEQAudioProcessor::updateFilters()
         stringArray.add(str);
     
     }
-    
+
     layout.add(std::make_unique<juce::AudioParameterChoice>("LowCut Slope", "LowCut Slope", stringArray, 0 ));
     layout.add(std::make_unique<juce::AudioParameterChoice>("HighCut Slope", "HighCut Slope", stringArray, 0 ));
+    
+    
+    
+    //juce::StringArray distArray;
+    
+    
+    //distArray.addItem("Hard Clip", 1);
+    //distArray.addItem("Soft Clip", 2);
+    //distArray.addItem("Half-Wave Rect", 3);
+    
+    //layout.add(std::make_unique<juce::AudioParameterChoice>("Distortion", "Distortion", distArray, 0));
+    
+    
+    
     
     return layout;
 }

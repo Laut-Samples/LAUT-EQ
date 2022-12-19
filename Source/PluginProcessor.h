@@ -10,6 +10,7 @@
 
 #include <JuceHeader.h>
 
+// struct data array
 enum Slope
 {
     Slope_12,
@@ -18,6 +19,7 @@ enum Slope
     Slope_48
     
 };
+
 
 struct ChainSettings
 {
@@ -72,14 +74,22 @@ public:
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 
-    static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     
+    // APVTS Create Parameter Function
+    static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     juce::AudioProcessorValueTreeState apvts {*this, nullptr, "Parameters", createParameterLayout()};
+    
+    // Dist
+    int menuChoice;
+    float thresh = 0.0f;
+    float mix = 0.0f;
     
     
 private:
-    using Filter = juce::dsp::IIR::Filter<float>;
     
+    // Using IIR DSP Filter
+    using Filter = juce::dsp::IIR::Filter<float>;
+
     using CutFilter = juce::dsp::ProcessorChain<Filter, Filter, Filter, Filter>;
     
     using MonoChain = juce::dsp::ProcessorChain<CutFilter, Filter, CutFilter>;
@@ -99,6 +109,7 @@ private:
     static void updateCoefficients(Coefficients& old, const Coefficients& replacements);
     
     template<int Index, typename ChainType, typename CoefficientsType>
+    
     void update(ChainType& chain, const CoefficientsType& coefficients)
     {
         updateCoefficients (chain.template get<Index>().coefficients, coefficients[Index]);
