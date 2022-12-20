@@ -9,58 +9,60 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
-//==============================================================================
-LAUTEQAudioProcessorEditor::LAUTEQAudioProcessorEditor (LAUTEQAudioProcessor& p)
-    : AudioProcessorEditor (&p), audioProcessor (p),
 
-peakFreqAttachment(audioProcessor.apvts, "Peak Freq", peakFreqSlider),
-peakGainAttachment(audioProcessor.apvts, "Peak Gain", peakGainSlider),
-peakQualityAttachment(audioProcessor.apvts, "Peak Quality", peakQualitySlider),
-lowCutFreqAttachment(audioProcessor.apvts, "LowCut Freq", lowCutFreqSlider),
-highCutFreqAttachment(audioProcessor.apvts, "HighCut Freq", highCutFreqSlider),
-lowCutSlopeAttachment(audioProcessor.apvts, "LowCut Slope", lowCutSlopeSlider),
-highCutSlopeAttachment(audioProcessor.apvts, "HighCut Slope", highCutSlopeSlider)
-
+ResponseCurveComponent::ResponseCurveComponent(LAUTEQAudioProcessor& p) : audioProcessor(p)
 {
-    for (auto* comp : getComps() )
+    const auto& params = audioProcessor.getParameters();
+    for ( auto param : params )
     {
-        addAndMakeVisible(comp);
+        param ->addListener(this);
     }
-    // Make sure that before the constructor has finished, you've set the
-    // editor's size to whatever you need it to be.
-    setSize (600, 400);
     
-    
-    // Dist
-    addAndMakeVisible(&disChoice);
-    disChoice.addItem("Hard Clip", 1);
-    disChoice.addItem("Soft Clip", 2);
-    disChoice.addItem("Half-Wave Rect", 3);
-    disChoice.setSelectedId(1);
-    disChoice.addListener(this);
-    
-    addAndMakeVisible(&Threshold);
-    Threshold.setRange(0.0f, 1.0f, 0.001);
-    Threshold.addListener(this);
-    
-    addAndMakeVisible(&Mix);
-    Mix.setRange(0.0f, 1.0f, 0.001);
-    Mix.addListener(this);
-    
-    
+    startTimerHz(60);
 }
 
-LAUTEQAudioProcessorEditor::~LAUTEQAudioProcessorEditor()
+ResponseCurveComponent::~ResponseCurveComponent()
 {
+    const auto& params = audioProcessor.getParameters();
+    for ( auto param : params )
+    {
+        param->removeListener(this);
+    }
 }
 
-//==============================================================================
-void LAUTEQAudioProcessorEditor::paint (juce::Graphics& g)
+void ResponseCurveComponent::parameterValueChanged (int parameterIndex, float newValue)
+{
+    parametersChanged.set(true);
+}
+
+
+
+void ResponseCurveComponent::timerCallback()
+{
+    if (parametersChanged.compareAndSetBool(false, true) )
+    {
+        auto chainSettings = getChainSettings(audioProcessor.apvts);
+        auto peakCoefficiens = makePeakFilter(chainSettings, audioProcessor.getSampleRate());
+        updateCoefficients(monoChain.get<ChainPositions::Peak>().coefficients, peakCoefficiens);
+        
+        auto lowCutCoefficients = makeLowCutFilter(chainSettings, audioProcessor.getSampleRate());
+        auto highCutCoefficients = makeHighCutFilter(chainSettings, audioProcessor.getSampleRate());
+        
+        
+        updateCutFilter(monoChain.get<ChainPositions::LowCut>(), lowCutCoefficients, chainSettings.lowCutSlope);
+        updateCutFilter(monoChain.get<ChainPositions::HighCut>(), highCutCoefficients, chainSettings.lowCutSlope);
+        
+        repaint();
+    }
+}
+
+
+void ResponseCurveComponent::paint (juce::Graphics& g)
 {
     g.fillAll(Colours::black);
     
-    auto bounds = getLocalBounds();
-    auto responseArea = bounds.removeFromTop(bounds.getHeight() * 0.33);
+    auto responseArea = getLocalBounds();
+//    auto responseArea = bounds.removeFromTop(bounds.getHeight() * 0.33);
     
     auto w = responseArea.getWidth();
     
@@ -131,6 +133,75 @@ void LAUTEQAudioProcessorEditor::paint (juce::Graphics& g)
     
 }
 
+//==============================================================================
+LAUTEQAudioProcessorEditor::LAUTEQAudioProcessorEditor (LAUTEQAudioProcessor& p)
+    : AudioProcessorEditor (&p), audioProcessor (p),
+
+responseCurveComponent(audioProcessor),
+peakFreqAttachment(audioProcessor.apvts, "Peak Freq", peakFreqSlider),
+peakGainAttachment(audioProcessor.apvts, "Peak Gain", peakGainSlider),
+peakQualityAttachment(audioProcessor.apvts, "Peak Quality", peakQualitySlider),
+lowCutFreqAttachment(audioProcessor.apvts, "LowCut Freq", lowCutFreqSlider),
+highCutFreqAttachment(audioProcessor.apvts, "HighCut Freq", highCutFreqSlider),
+lowCutSlopeAttachment(audioProcessor.apvts, "LowCut Slope", lowCutSlopeSlider),
+highCutSlopeAttachment(audioProcessor.apvts, "HighCut Slope", highCutSlopeSlider)
+
+{
+    for (auto* comp : getComps() )
+    {
+        addAndMakeVisible(comp);
+    }
+    
+//    const auto& params = audioProcessor.getParameters();
+//    for ( auto param : params )
+//    {
+//        param ->addListener(this);
+//    }
+    
+//    startTimerHz(60);
+    
+    setSize (600, 400);
+    
+    
+    // Dist
+    addAndMakeVisible(&disChoice);
+    disChoice.addItem("Hard Clip", 1);
+    disChoice.addItem("Soft Clip", 2);
+    disChoice.addItem("Half-Wave Rect", 3);
+    disChoice.setSelectedId(1);
+    disChoice.addListener(this);
+    
+    addAndMakeVisible(&Threshold);
+    Threshold.setRange(0.0f, 1.0f, 0.001);
+    Threshold.addListener(this);
+    
+    addAndMakeVisible(&Mix);
+    Mix.setRange(0.0f, 1.0f, 0.001);
+    Mix.addListener(this);
+    
+    
+}
+
+LAUTEQAudioProcessorEditor::~LAUTEQAudioProcessorEditor()
+{
+//    const auto& params = audioProcessor.getParameters();
+//    for ( auto param : params )
+//    {
+//        param->removeListener(this);
+//    }
+}
+
+//==============================================================================
+void LAUTEQAudioProcessorEditor::paint (juce::Graphics& g)
+{
+    g.fillAll(Colours::black);
+    
+    
+    
+    
+    
+}
+
 void LAUTEQAudioProcessorEditor::resized()
 {
     
@@ -145,6 +216,8 @@ void LAUTEQAudioProcessorEditor::resized()
     
     auto bounds = getLocalBounds();
     auto responseArea = bounds.removeFromTop(bounds.getHeight() * 0.33);
+    
+    responseCurveComponent.setBounds(responseArea);
 
     auto lowCutArea = bounds.removeFromLeft(bounds.getWidth() * 0.33);
     auto highCutArea = bounds.removeFromRight(bounds.getWidth() * 0.5);
@@ -162,18 +235,8 @@ void LAUTEQAudioProcessorEditor::resized()
     
 }
 
-void LAUTEQAudioProcessorEditor::parameterValueChanged (int parameterIndex, float newValue)
-{
-    parametersChanged.set(true);
-}
 
-void LAUTEQAudioProcessorEditor::timerCallback()
-{
-    if (parametersChanged.compareAndSetBool(false, true) )
-    {
-        
-    }
-}
+
 
 void LAUTEQAudioProcessorEditorparameterGestureChanged (int parameterIndex, bool gestureIsStarting)
 {
@@ -191,6 +254,7 @@ std::vector<juce::Component*> LAUTEQAudioProcessorEditor::getComps()
         &highCutFreqSlider,
         &highCutSlopeSlider,
         &lowCutSlopeSlider,
+        &responseCurveComponent,
     };
 }
 
@@ -198,6 +262,7 @@ void LAUTEQAudioProcessorEditor::comboBoxChanged(juce::ComboBox * comboBoxThatHa
 {
     audioProcessor.menuChoice = comboBoxThatHasChanged->getSelectedId();
 }
+
 
 void LAUTEQAudioProcessorEditor::sliderValueChanged(juce::Slider * sliderThatHasChanged)
 {
