@@ -10,13 +10,14 @@
 
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
-
+#include <array>
 
 //// FFT Data Generator
 
 
 enum FFTOrder
 {
+    order1024 = 10,
     order2048 = 11,
     order4096 = 12,
     order8192 = 13
@@ -194,7 +195,7 @@ struct PathProducer
     PathProducer(SingleChannelSampleFifo<LAUTEQAudioProcessor::BlockType>& scsf) :
     leftChannelFifo(&scsf)
     {
-        leftChannelFFTDataGenerator.changeOrder(FFTOrder::order2048);
+        leftChannelFFTDataGenerator.changeOrder(FFTOrder::order8192);
         monoBuffer.setSize(1, leftChannelFFTDataGenerator.getFFTSize());
     }
     
@@ -217,6 +218,7 @@ struct PathProducer
 struct ResponseCurveComponent : juce::Component,
 juce::AudioProcessorParameter::Listener,
 juce::Timer
+
 {
     ResponseCurveComponent(LAUTEQAudioProcessor&);
     ~ResponseCurveComponent();
@@ -229,6 +231,12 @@ juce::Timer
     
     void paint(juce::Graphics& g) override;
     
+    
+//    
+//    juce::Array<float> getHistory()
+//    {
+//        return history;
+//    }
 
 private:
         LAUTEQAudioProcessor& audioProcessor;
@@ -242,6 +250,10 @@ private:
     juce::Rectangle<int> getAnalysisArea();
     
     PathProducer leftPathProducer, rightPathProducer;
+    
+    juce::ColourGradient grand;
+    
+
     
 };
 

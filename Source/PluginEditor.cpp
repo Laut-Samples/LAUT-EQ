@@ -3,7 +3,7 @@
 
     This file contains the basic framework code for a JUCE plugin editor.
 
-  ==============================================================================
+ // ==============================================================================
 */
 
 #include "PluginProcessor.h"
@@ -14,6 +14,7 @@ ResponseCurveComponent::ResponseCurveComponent(LAUTEQAudioProcessor& p) : audioP
 //                                                                            leftChannelFifo(&audioProcessor.leftChannelFifo)
                                                                         leftPathProducer(audioProcessor.leftChannelFifo),
                                                                         rightPathProducer(audioProcessor.rightChannelFifo)
+
 {
     const auto& params = audioProcessor.getParameters();
     for ( auto param : params )
@@ -33,6 +34,10 @@ ResponseCurveComponent::ResponseCurveComponent(LAUTEQAudioProcessor& p) : audioP
     startTimerHz(60);
 }
 
+
+ // ==============================================================================
+
+
 ResponseCurveComponent::~ResponseCurveComponent()
 {
     const auto& params = audioProcessor.getParameters();
@@ -42,10 +47,17 @@ ResponseCurveComponent::~ResponseCurveComponent()
     }
 }
 
+
+ // ==============================================================================
+
 void ResponseCurveComponent::parameterValueChanged (int parameterIndex, float newValue)
 {
     parametersChanged.set(true);
 }
+
+
+ // ==============================================================================
+
 
 void PathProducer::process(juce::Rectangle<float> fftBounds, double sampleRate)
 {
@@ -67,10 +79,14 @@ void PathProducer::process(juce::Rectangle<float> fftBounds, double sampleRate)
                                               tempIncomingBuffer.getReadPointer(0, 0),
                                               size);
             
+            
+            
             leftChannelFFTDataGenerator.produceFFTDataForRendering(monoBuffer, -48.f);
             
         }
     }
+    
+    
     
 //    const auto fftBounds = getAnalysisArea().toFloat();
     const auto fftSize = leftChannelFFTDataGenerator.getFFTSize();
@@ -91,6 +107,9 @@ void PathProducer::process(juce::Rectangle<float> fftBounds, double sampleRate)
     }
 }
 
+
+ // ==============================================================================
+
 void ResponseCurveComponent::timerCallback()
 {
 
@@ -101,7 +120,7 @@ void ResponseCurveComponent::timerCallback()
     leftPathProducer.process(fftBounds, samplerate);
     rightPathProducer.process(fftBounds, samplerate);
     
-
+    startTimer(1000/20);
     
     
     if (parametersChanged.compareAndSetBool(false, true) )
@@ -113,6 +132,7 @@ void ResponseCurveComponent::timerCallback()
     repaint();
 }
 
+ // ==============================================================================
 
 void ResponseCurveComponent::updateChain()
 {
@@ -128,7 +148,7 @@ void ResponseCurveComponent::updateChain()
     updateCutFilter(monoChain.get<ChainPositions::HighCut>(), highCutCoefficients, chainSettings.lowCutSlope);
     
 }
-
+ // ==============================================================================
 void ResponseCurveComponent::paint (juce::Graphics& g)
 {
     g.fillAll(Colours::black);
@@ -180,10 +200,13 @@ void ResponseCurveComponent::paint (juce::Graphics& g)
     }
     
     
+     // ==============================================================================
     
     // Response Curve
     Path responseCurve;
     
+//    juce::ColourGradient gradient;
+ 
     const double outputMin = responseArea.getBottom();
     const double outputMax = responseArea.getY();
     auto map = [outputMin, outputMax](double input)
@@ -191,32 +214,115 @@ void ResponseCurveComponent::paint (juce::Graphics& g)
         return jmap(input, -24.0, 24.0, outputMin, outputMax);
     };
     
-    responseCurve.startNewSubPath(responseArea.getX(), map(mags.front()));
     
-    for ( size_t i =1; i < mags.size(); i++)
+     // ==============================================================================
+    
+//    //Filter Curve DRAW
+//
+//    responseCurve.startNewSubPath(responseArea.getX(), map(mags.front()));
+//
+//
+//    for ( size_t i =1; i < mags.size(); i++)
+//    {
+//        responseCurve.lineTo(responseArea.getX() + i, map(mags[i]));
+//    }
+//
+        // ==============================================================================
+    
+    
+    //Spectrum
+    
+    
+//    auto leftChannelFFTPath = leftPathProducer.getPath();
+//    leftChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX(), responseArea.getY()));
+//
+    
+    //
+    for ( auto y = 0; y < 5; y++ )
     {
-        responseCurve.lineTo(responseArea.getX() + i, map(mags[i]));
+        
+        juce::Array<juce::Colour> colours { juce::Colours::red, juce::Colours::green, juce::Colours::blue };
+        
+        
+        auto rightChannelFFTPath = rightPathProducer.getPath();
+        
+        // First Spec
+        rightChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX()+1, responseArea.getY()-0));
+        
+        g.setColour(colours[0+y]);
+        
+        // Draw Specs wishing out
+        g.fillPath(rightChannelFFTPath,(AffineTransform().translation(responseArea.getX()+1, responseArea.getY()-0)));
+        
+        
+        //Draw Lines to Wish out
+        for ( double y2 = 0.5; y2 >= 0.0; y2 -= 0.1)
+        {
+        rightChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX()+5, responseArea.getY()-1*10));
+        PathStrokeType pst(y2);
+        g.setColour(colours[0+y]);
+        
+//        ColourGradient gradient(juce::Colours::blue, responseArea.getX()/2,responseArea.getY()/2,
+//                             Colours::orange, responseArea.getX()/2,true);
+//
+//        g.setGradientFill(gradient);
+            
+            
+        g.strokePath(rightChannelFFTPath, PathStrokeType(y2));
+            
+        
+        }
+        
+        
+        for ( double y3 = 0; y3 < samplerate/10000; y3++)
+        {
+            rightChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX()+5, responseArea.getY()-1*10));
+            g.setColour(Colours::white);
+//            g.strokePath(rightChannelFFTPath(0);
+        }
+        
+        
+//        rightChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX()+3, responseArea.getY()-2*10));
+//        g.setColour(Colours::red);
+//        g.strokePath(rightChannelFFTPath, PathStrokeType(0.25f));
+//
+//        rightChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX()+4, responseArea.getY()-3*10));
+//        g.setColour(Colours::red);
+//        g.strokePath(rightChannelFFTPath, PathStrokeType(0.1f));
+//
+        
+//                for ( auto i = 0; i < samplerate/10000; i++ )
+//                {
+//
+//                    auto rightChannelFFTPath = rightPathProducer.getPath();
+//                    rightChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX()-y, responseArea.getY()-y*10));
+//
+////
+////                    auto leftChannelFFTPath = leftPathProducer.getPath();
+////                    leftChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX()-i, responseArea.getY()-i*10));
+//
+//
+////                        // Response curve Definition
+////                        g.setColour(Colours::white);
+////                        g.strokePath(leftChannelFFTPath, PathStrokeType(1.f));
+////
+//                    g.setColour(Colours::red);
+//                    g.strokePath(rightChannelFFTPath, PathStrokeType(1.f));
+//
+//                }
+//
+//
+    
     }
+            
+            // Response curve Definition
+            g.setColour(Colours::whitesmoke);
     
     
-    auto leftChannelFFTPath = leftPathProducer.getPath();
-    leftChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX(), responseArea.getY()));
     
-    auto rightChannelFFTPath = rightPathProducer.getPath();
-    rightChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX(), responseArea.getY()));
+    // g.strokePath(rightChannelFFTPath, PathStrokeType(1.f));
     
-    // Response curve Definition
-    g.setColour(Colours::white);
-    g.strokePath(leftChannelFFTPath, PathStrokeType(1.f));
-    
-    // Response curve Definition
-    g.setColour(Colours::whitesmoke);
-    
-    
-    g.strokePath(rightChannelFFTPath, PathStrokeType(1.f));
-    
-   // g.strokePath(rightChannelFFTPath, Pat)
-    
+    // Filter curve
     g.setColour(Colours::orange);
     g.drawRoundedRectangle(responseArea.toFloat(), 4.f, 1.f);
     
@@ -244,7 +350,7 @@ juce::Rectangle<int> ResponseCurveComponent::getAnalysisArea()
 {
     auto bounds = getRenderArea();
     bounds.removeFromTop(4);
-    bounds.removeFromBottom(-3);
+    bounds.removeFromBottom(0);
     return bounds;
 }
 

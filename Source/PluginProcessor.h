@@ -127,7 +127,12 @@ struct SingleChannelSampleFifo
     //==============================================================================
     bool getAudioBuffer(BlockType& buf) { return audioBufferFifo.pull(buf); }
     
+    
+    
 private:
+    
+
+    
     
     Channel channelToUse;
     int fifoIndex = 0;
@@ -271,7 +276,12 @@ public:
     //==============================================================================
     LAUTEQAudioProcessor();
     ~LAUTEQAudioProcessor() override;
-
+//
+//    /// ARRAY HISTORY
+//    const juce::Array<float> history;
+//    int historyLength = 400;
+//    float sample;
+    
     //==============================================================================
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
@@ -315,6 +325,8 @@ public:
     float thresh = 0.0f;
     float mix = 0.0f;
     
+
+
     
     using BlockType = juce::AudioBuffer<float>;
     SingleChannelSampleFifo<BlockType> leftChannelFifo { Channel::Left };

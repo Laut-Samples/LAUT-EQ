@@ -22,11 +22,13 @@ LAUTEQAudioProcessor::LAUTEQAudioProcessor()
                        )
 #endif
 {
+    
 }
 
 LAUTEQAudioProcessor::~LAUTEQAudioProcessor()
 {
 }
+
 
 //==============================================================================
 const juce::String LAUTEQAudioProcessor::getName() const
@@ -102,6 +104,12 @@ void LAUTEQAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock
     spec.numChannels = 1;
     spec.sampleRate = sampleRate;
     
+//    //reset History array
+//    for (int i = 0; i < historyLength; i++ )
+//    {
+//        history.add(0);
+//    }
+    
     
     // prepare process spec
     leftChain.prepare(spec);
@@ -172,6 +180,7 @@ void LAUTEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
 
+    
     // Dist
     for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
     {
@@ -260,6 +269,26 @@ void LAUTEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     
     leftChannelFifo.update(buffer);
     rightChannelFifo.update(buffer);
+    
+ //==============================================================================
+    
+    
+    // History
+    
+    
+    
+//    // fill with buffer every 20s or so 
+//    for (int i = 0; i < buffer.getNumSamples(); i++)
+//    {
+//        if(i%10 == 0)
+//            sample = buffer.getNumSamples();
+//            history.add(sample);
+//        
+//        if (history.size() > historyLength)
+//            history.remove(0);
+//        
+//    }
+//    
     
 }
 
