@@ -110,6 +110,9 @@ void LAUTEQAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock
     
     updateFilters();
     
+    leftChannelFifo.prepare(samplesPerBlock);
+    rightChannelFifo.prepare(samplesPerBlock);
+    
 }
 
 void LAUTEQAudioProcessor::releaseResources()
@@ -236,6 +239,9 @@ void LAUTEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     /** Process `context` through all inner processors in sequence. */
     leftChain.process(leftContext);                                                 // process replacing
     rightChain.process(rightContext);                                               // process replacing
+    
+    leftChannelFifo.update(buffer);
+    rightChannelFifo.update(buffer);
     
 }
 
