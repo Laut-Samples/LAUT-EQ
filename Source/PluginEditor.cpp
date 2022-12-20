@@ -11,7 +11,9 @@
 
 
 ResponseCurveComponent::ResponseCurveComponent(LAUTEQAudioProcessor& p) : audioProcessor(p),
-                                                                            leftChannelFifo(&audioProcessor.leftChannelFifo)
+//                                                                            leftChannelFifo(&audioProcessor.leftChannelFifo)
+                                                                        leftPathProducer(audioProcessor.leftChannelFifo),
+                                                                        rightPathProducer(audioProcessor.rightChannelFifo)
 {
     const auto& params = audioProcessor.getParameters();
     for ( auto param : params )
@@ -19,8 +21,8 @@ ResponseCurveComponent::ResponseCurveComponent(LAUTEQAudioProcessor& p) : audioP
         param ->addListener(this);
     }
     
-    leftChannelFFTDataGenerator.changeOrder(FFTOrder::order2048);
-    monoBuffer.setSize(1, leftChannelFFTDataGenerator.getFFTSize());
+//    leftChannelFFTDataGenerator.changeOrder(FFTOrder::order2048);
+//    monoBuffer.setSize(1, leftChannelFFTDataGenerator.getFFTSize());
     
     /*
      44100 khz / 2048 Bins = 23Hz pro Band
@@ -45,9 +47,7 @@ void ResponseCurveComponent::parameterValueChanged (int parameterIndex, float ne
     parametersChanged.set(true);
 }
 
-
-
-void ResponseCurveComponent::timerCallback()
+void PathProducer::process(juce::Rectangle<float> fftBounds, double sampleRate)
 {
     juce::AudioBuffer<float> tempIncomingBuffer;
     
@@ -65,17 +65,16 @@ void ResponseCurveComponent::timerCallback()
             // Copying data
             juce::FloatVectorOperations::copy(monoBuffer.getWritePointer(0, monoBuffer.getNumSamples() - size),
                                               tempIncomingBuffer.getReadPointer(0, 0),
-                                            size);
+                                              size);
             
             leftChannelFFTDataGenerator.produceFFTDataForRendering(monoBuffer, -48.f);
             
         }
     }
     
-    
-    const auto fftBounds = getAnalysisArea().toFloat();
+//    const auto fftBounds = getAnalysisArea().toFloat();
     const auto fftSize = leftChannelFFTDataGenerator.getFFTSize();
-    const auto binWidth = audioProcessor.getSampleRate() / (double)fftSize;
+    const auto binWidth = sampleRate / (double)fftSize;
     
     while (leftChannelFFTDataGenerator.getNumAvailableFFTDataBlocks() > 0)
     {
@@ -90,6 +89,19 @@ void ResponseCurveComponent::timerCallback()
     {
         pathProducer.getPath(leftChannelFFTPath);
     }
+}
+
+void ResponseCurveComponent::timerCallback()
+{
+
+    
+    auto fftBounds = getAnalysisArea().toFloat();
+    auto samplerate = audioProcessor.getSampleRate();
+    
+    leftPathProducer.process(fftBounds, samplerate);
+    rightPathProducer.process(fftBounds, samplerate);
+    
+
     
     
     if (parametersChanged.compareAndSetBool(false, true) )
@@ -186,10 +198,25 @@ void ResponseCurveComponent::paint (juce::Graphics& g)
         responseCurve.lineTo(responseArea.getX() + i, map(mags[i]));
     }
     
+    
+    auto leftChannelFFTPath = leftPathProducer.getPath();
+    leftChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX(), responseArea.getY()));
+    
+    auto rightChannelFFTPath = rightPathProducer.getPath();
+    rightChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX(), responseArea.getY()));
+    
     // Response curve Definition
     g.setColour(Colours::white);
     g.strokePath(leftChannelFFTPath, PathStrokeType(1.f));
-     
+    
+    // Response curve Definition
+    g.setColour(Colours::whitesmoke);
+    
+    
+    g.strokePath(rightChannelFFTPath, PathStrokeType(1.f));
+    
+   // g.strokePath(rightChannelFFTPath, Pat)
+    
     g.setColour(Colours::orange);
     g.drawRoundedRectangle(responseArea.toFloat(), 4.f, 1.f);
     
@@ -206,7 +233,7 @@ juce::Rectangle<int> ResponseCurveComponent::getRenderArea()
     auto bounds = getLocalBounds();
     
     bounds.removeFromTop(12);
-    bounds.removeFromBottom(2);
+    bounds.removeFromBottom(0);
     bounds.removeFromLeft(20);
     bounds.removeFromRight(20);
     
@@ -217,7 +244,7 @@ juce::Rectangle<int> ResponseCurveComponent::getAnalysisArea()
 {
     auto bounds = getRenderArea();
     bounds.removeFromTop(4);
-    bounds.removeFromBottom(4);
+    bounds.removeFromBottom(-3);
     return bounds;
 }
 

@@ -113,6 +113,14 @@ void LAUTEQAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock
     leftChannelFifo.prepare(samplesPerBlock);
     rightChannelFifo.prepare(samplesPerBlock);
     
+    osc.initialise([](float x) {return std::sin(x); });
+    
+    
+    // OSC Test FOR SPEC
+    spec.numChannels = getTotalNumOutputChannels();
+    osc.prepare(spec);
+    osc.setFrequency(200);
+    
 }
 
 void LAUTEQAudioProcessor::releaseResources()
@@ -221,8 +229,18 @@ void LAUTEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     // Jump to update Filter function
     updateFilters();
     
+    
+
     // create dsp sample block initialized with buffer
     juce::dsp::AudioBlock<float> block(buffer);
+
+    
+//    // OSC
+//    buffer.clear();
+//    juce::dsp::ProcessContextReplacing<float> stereoContext(block);
+//    osc.process(stereoContext);
+    
+    
     
     /** Returns an AudioBlock that represents one of the channels in this block. */
     auto leftBlock = block.getSingleChannelBlock(0);                                // get block channel 0 and store in leftBlock
