@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <JUCERPROJECT id="ajnsZj" name="LAUT EQ" projectType="audioplug" useAppConfig="0"
-              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" cppLanguageStandard="17">
+              addUsingNamespaceToJuceHeader="1" jucerFormatVersion="1" cppLanguageStandard="17">
   <MAINGROUP id="sFMZt6" name="LAUT EQ">
     <GROUP id="{424362A3-6DA6-C081-2E27-D0C31B613045}" name="Source">
       <FILE id="oIEeSL" name="PluginProcessor.cpp" compile="1" resource="0"

@@ -293,19 +293,29 @@ ChainSettings getChainSettings(juce::AudioProcessorValueTreeState& apvts)
 
 // PEAK processor change
 
+Coefficients makePeakFilter(const ChainSettings& chainSettings, double sampleRate)
+{
+    return juce::dsp::IIR::Coefficients<float>::makePeakFilter(sampleRate,
+                                                               chainSettings.peakFreq,                 // get settings from apvts string fader
+                                                               chainSettings.peakQuality,              // get settings from apvts string peak q
+                                                               juce::Decibels::decibelsToGain(chainSettings.peakGainInDecibels)); // range
+    
+}
+
 void LAUTEQAudioProcessor::updatePeakFilter(const ChainSettings &chainSettings)
 {
     // define peak filter
-    auto peakCoefficients = juce::dsp::IIR::Coefficients<float>::makePeakFilter(getSampleRate(),                        // sample rate
-                                                                                chainSettings.peakFreq,                 // get settings from apvts string fader
-                                                                                chainSettings.peakQuality,              // get settings from apvts string peak q
-                                                                                juce::Decibels::decibelsToGain(chainSettings.peakGainInDecibels)); // range
-    
+//    auto peakCoefficients = juce::dsp::IIR::Coefficients<float>::makePeakFilter(getSampleRate(),                        // sample rate
+//                                                                                chainSettings.peakFreq,                 // get settings from apvts string fader
+//                                                                                chainSettings.peakQuality,              // get settings from apvts string peak q
+//                                                                                juce::Decibels::decibelsToGain(chainSettings.peakGainInDecibels)); // range
+//
+    auto peakCoefficients = makePeakFilter(chainSettings, getSampleRate());
     updateCoefficients(leftChain.template get<ChainPositions::Peak>().coefficients, peakCoefficients);
     updateCoefficients(rightChain.template get<ChainPositions::Peak>().coefficients, peakCoefficients);
 }
 
-void LAUTEQAudioProcessor::updateCoefficients(Coefficients& old, const Coefficients& replacements)
+void updateCoefficients(Coefficients& old, const Coefficients& replacements)
     {
         *old = *replacements;
     }
