@@ -10,6 +10,13 @@
 
 #include <JuceHeader.h>
 
+/// Fifo to GUI
+// FFT DATA GENERATOR
+
+/// GUI Retreat Blocks Channel Smaple FIFO Produced
+
+/// FFT NEEDS FCSC To Prepare FFT Data Blocks in Array
+
 #include <array>
 template<typename T>
 struct Fifo
@@ -17,8 +24,10 @@ struct Fifo
     void prepare(int numChannels, int numSamples)
     {
         
-        static_assert( std::is_same_v<T, juce::AudioBuffer<float>>,
+        static_assert( std::is_same_v<T,
+                      juce::AudioBuffer<float>>,
                       "prepare(numChannels, numSamples) should only be used when the Fifo is holding juce::AudioBuffer<float>");
+        
         for( auto& buffer : buffers)
         {
             buffer.setSize(numChannels,
@@ -30,10 +39,13 @@ struct Fifo
         }
     }
     
+    // Prepare with space we need
+    
     void prepare(size_t numElements)
     {
         static_assert( std::is_same_v<T, std::vector<float>>,
                       "prepare(numElements) should only be used when the Fifo is holding std::vector<float>");
+        
         for( auto& buffer : buffers )
         {
             buffer.clear();
@@ -41,6 +53,8 @@ struct Fifo
         }
     }
     
+    
+    // push data into array
     bool push(const T& t)
     {
         auto write = fifo.write(1);
@@ -52,6 +66,8 @@ struct Fifo
         
         return false;
     }
+    
+    // Pull data out of Array
     
     bool pull(T& t)
     {
@@ -69,11 +85,14 @@ struct Fifo
     {
         return fifo.getNumReady();
     }
+    
+    
 private:
     static constexpr int Capacity = 30;
     std::array<T, Capacity> buffers;
     juce::AbstractFifo fifo {Capacity};
 };
+
 
 
 enum Channel
@@ -82,17 +101,26 @@ enum Channel
     Left        // 1
 };
 
+  //==============================================================================  //==============================================================================
+//// SCSF Host Buffer Collect Block in fixed sizes // Collecting individual samples from buffer
 
-//// SCSF Host Buffer
+// SCSF Spit Out Fixed Size Blocks
+//
+//FB (Fixed Blocked)
+//This format designation means that several logical records are combined into one physical block. This format can provide efficient space utilization and operation. This format is commonly used for fixed-length records.
 
 template<typename BlockType>
 struct SingleChannelSampleFifo
 {
+    
+    // Create Channel
     SingleChannelSampleFifo(Channel ch) : channelToUse(ch)
     {
         prepared.set(false);
     }
     
+    
+    // Process Block update with buffer for each channel
     void update(const BlockType& buffer)
     {
         jassert(prepared.get());
@@ -105,6 +133,8 @@ struct SingleChannelSampleFifo
         }
     }
     
+    
+    // Prepare Buffer Prepare to play (samplesperBlock)
     void prepare(int bufferSize)
     {
         prepared.set(false);
@@ -119,13 +149,17 @@ struct SingleChannelSampleFifo
         fifoIndex = 0;
         prepared.set(true);
     }
+    
+    // Get Buffer
     //==============================================================================
     int getNumCompleteBuffersAvailable() const { return audioBufferFifo.getNumAvailableForReading(); }
     bool isPrepared() const { return prepared.get(); }
     int getSize() const { return size.get(); }
     
     //==============================================================================
-    bool getAudioBuffer(BlockType& buf) { return audioBufferFifo.pull(buf); }
+    bool getAudioBuffer(BlockType& buf) { return audioBufferFifo.pull(buf); }                                   // Get Buffer
+    
+    
     
     
     
@@ -158,6 +192,8 @@ private:
 };
 
 
+    //==============================================================================    //==============================================================================
+
 
 // struct data array
 enum Slope
@@ -180,7 +216,11 @@ struct ChainSettings
 
 ChainSettings getChainSettings(juce::AudioProcessorValueTreeState& apvts);
 
-// Using IIR DSP Filter
+
+
+// Using IIR DSP Filter MAKE FILTER
+
+
 using Filter = juce::dsp::IIR::Filter<float>;
 
 using CutFilter = juce::dsp::ProcessorChain<Filter, Filter, Filter, Filter>;
@@ -267,7 +307,7 @@ void updateHighCutFilters(const ChainSettings& chainSettings);
 
 
 
-//==============================================================================
+//==============================================================================     //==============================================================================
 /**
 */
 class LAUTEQAudioProcessor  : public juce::AudioProcessor
@@ -328,9 +368,17 @@ public:
 
 
     
+    //============================================================================== Creates a buffer with a specified number of channels and samples.
     using BlockType = juce::AudioBuffer<float>;
+    
+    /// Prepare FIFo // Acces to Class // make it eas to mak Pointer instences
+    
+    
+    // Create Fixed Sizes Blocks in left and right channel
     SingleChannelSampleFifo<BlockType> leftChannelFifo { Channel::Left };
     SingleChannelSampleFifo<BlockType> rightChannelFifo { Channel::Right };
+    
+    
     
     
 private:

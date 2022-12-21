@@ -11,7 +11,7 @@
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
 #include <array>
-
+//==============================================================================//==============================================================================
 //// FFT Data Generator
 
 
@@ -29,9 +29,10 @@ struct FFTDataGenerator
     /**
      produces the FFT data from an audio buffer.
      */
+    // Feed Audio into FFT
     void produceFFTDataForRendering(const juce::AudioBuffer<float>& audioData, const float negativeInfinity)
     {
-        const auto fftSize = getFFTSize();
+        const auto fftSize = getFFTSize(); // Order
         
         fftData.assign(fftData.size(), 0);
         auto* readIndex = audioData.getReadPointer(0);
@@ -67,6 +68,9 @@ struct FFTDataGenerator
             fftData[i] = juce::Decibels::gainToDecibels(fftData[i], negativeInfinity);
         }
         
+        
+        
+        
         fftDataFifo.push(fftData);
     }
     
@@ -80,7 +84,20 @@ struct FFTDataGenerator
         auto fftSize = getFFTSize();
         
         forwardFFT = std::make_unique<juce::dsp::FFT>(order);
-        window = std::make_unique<juce::dsp::WindowingFunction<float>>(fftSize, juce::dsp::WindowingFunction<float>::blackmanHarris);
+        window = std::make_unique<juce::dsp::WindowingFunction<float>>(fftSize, juce::dsp::WindowingFunction<float>::hamming);
+        
+//        enum WindowingMethod
+//        {
+//            rectangular = 0,
+//            triangular,
+//            hann,
+//            hamming,
+//            blackman,
+//            blackmanHarris,
+//            flatTop,
+//            kaiser,
+//            numWindowingMethods
+//        };
         
         fftData.clear();
         fftData.resize(fftSize * 2, 0);
@@ -88,10 +105,15 @@ struct FFTDataGenerator
         fftDataFifo.prepare(fftData.size());
     }
     //==============================================================================
+
     int getFFTSize() const { return 1 << order; }
-    int getNumAvailableFFTDataBlocks() const { return fftDataFifo.getNumAvailableForReading(); }
+    int getNumAvailableFFTDataBlocks() const { return fftDataFifo.getNumAvailableForReading(); }        // so how much fft data we have available
     //==============================================================================
-    bool getFFTData(BlockType& fftData) { return fftDataFifo.pull(fftData); }
+    bool getFFTData(BlockType& fftData) { return fftDataFifo.pull(fftData); }                           // get fft data
+    
+    
+    // GET
+    
 private:
     FFTOrder order;
     BlockType fftData;
@@ -101,9 +123,9 @@ private:
     Fifo<BlockType> fftDataFifo;
 };
 
-
-/// Generator
-
+//==============================================================================//==============================================================================
+/// PATH Generator class
+// Take the fft data info about size and spit out a path
 
 template<typename PathType>
 struct AnalyzerPathGenerator
@@ -111,6 +133,8 @@ struct AnalyzerPathGenerator
     /*
      converts 'renderData[]' into a juce::Path
      */
+    
+    // feed Data
     void generatePath(const std::vector<float>& renderData,
                       juce::Rectangle<float> fftBounds,
                       int fftSize,
@@ -141,7 +165,7 @@ struct AnalyzerPathGenerator
         
         p.startNewSubPath(0, y);
         
-        const int pathResolution = 2; //you can draw line-to's every 'pathResolution' pixels.
+        const int pathResolution = 1; //you can draw line-to's every 'pathResolution' pixels.
         
         for( int binNum = 1; binNum < numBins; binNum += pathResolution )
         {
@@ -166,7 +190,7 @@ struct AnalyzerPathGenerator
         return pathFifo.getNumAvailableForReading();
     }
     
-    // Pull data
+    // Pull data // path output 
     bool getPath(PathType& path)
     {
         return pathFifo.pull(path);
@@ -176,7 +200,7 @@ private:
     Fifo<PathType> pathFifo;
 };
 
-
+//==============================================================================SLIDER //==============================================================================
 //// Slider Component
 
 
@@ -189,9 +213,13 @@ struct CustomRotarySlider : juce::Slider
     }
 };
 
+ //==============================================================================/// PATH PRODUCER //==============================================================================
+
 
 struct PathProducer
 {
+    // Constructor for..
+    
     PathProducer(SingleChannelSampleFifo<LAUTEQAudioProcessor::BlockType>& scsf) :
     leftChannelFifo(&scsf)
     {
@@ -199,21 +227,34 @@ struct PathProducer
         monoBuffer.setSize(1, leftChannelFFTDataGenerator.getFFTSize());
     }
     
+    
+    // give rectangle , sample rate
     void process(juce::Rectangle<float> fftBounds, double sampleRate);
+    
+    
     juce::Path getPath() {return leftChannelFFTPath; }
     
     private:
+    
+    // Pointer to Audio Process Channels 
     SingleChannelSampleFifo<LAUTEQAudioProcessor::BlockType>* leftChannelFifo;
     
+    
+    // Monobuffer because single channel is mono for FFT
     juce::AudioBuffer<float> monoBuffer;
     
+    // Instance of the class
     FFTDataGenerator<std::vector<float>> leftChannelFFTDataGenerator;
     
-    
+    // pathProducer in Path Generator
     AnalyzerPathGenerator<juce::Path> pathProducer;
     
+    // path to draw and pull into 
     juce::Path leftChannelFFTPath;
 };
+
+
+//============================================================================== RESPONSE CURVE //==============================================================================
 
 struct ResponseCurveComponent : juce::Component,
 juce::AudioProcessorParameter::Listener,
@@ -249,6 +290,9 @@ private:
     
     juce::Rectangle<int> getAnalysisArea();
     
+    
+    
+    // FFT DATA To Path Producer 
     PathProducer leftPathProducer, rightPathProducer;
     
     juce::ColourGradient grand;
@@ -257,7 +301,7 @@ private:
     
 };
 
-//==============================================================================
+//============================================================================== EDITOR //==============================================================================
 /**
 */
 class LAUTEQAudioProcessorEditor  : public  juce::AudioProcessorEditor,
