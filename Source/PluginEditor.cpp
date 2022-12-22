@@ -12,8 +12,13 @@
 
 ResponseCurveComponent::ResponseCurveComponent(LAUTEQAudioProcessor& p) : audioProcessor(p),
 //                                                                            leftChannelFifo(&audioProcessor.leftChannelFifo)
+
+//==============================================================================  Initialize FIFO
+
                                                                         leftPathProducer(audioProcessor.leftChannelFifo),
                                                                         rightPathProducer(audioProcessor.rightChannelFifo)
+
+//==============================================================================
 
 {
     const auto& params = audioProcessor.getParameters();
@@ -31,7 +36,7 @@ ResponseCurveComponent::ResponseCurveComponent(LAUTEQAudioProcessor& p) : audioP
     
     updateChain();
     
-    startTimerHz(60);
+    startTimerHz(60000);
 }
 
 
@@ -56,50 +61,69 @@ void ResponseCurveComponent::parameterValueChanged (int parameterIndex, float ne
 }
 
 
- // ==============================================================================
+ // ============================================================================== PATH PRODUCER // ==============================================================================
 
 
 void PathProducer::process(juce::Rectangle<float> fftBounds, double sampleRate)
 {
+    /// Temporary Buffer
     juce::AudioBuffer<float> tempIncomingBuffer;
     
+    // while more than 0 buffer available
     while ( leftChannelFifo->getNumCompleteBuffersAvailable() > 0)
     {
+        // pull get audio buffer
         if (leftChannelFifo->getAudioBuffer(tempIncomingBuffer) )
         {
+            // get size of incoming buffer
             auto size = tempIncomingBuffer.getNumSamples();
             
+            
             // Shifting data
-            juce::FloatVectorOperations::copy(monoBuffer.getWritePointer(0,0),
-                                              monoBuffer.getReadPointer(0, size),
-                                              monoBuffer.getNumSamples() - size);
+            juce::FloatVectorOperations::copy(monoBuffer.getWritePointer(0,0),          // init with index 0
+                                              monoBuffer.getReadPointer(0, size/2),       // start with first block and size // select every second
+                                              monoBuffer.getNumSamples() - size);       // shift next block size to Gui
             
-            // Copying data
-            juce::FloatVectorOperations::copy(monoBuffer.getWritePointer(0, monoBuffer.getNumSamples() - size),
-                                              tempIncomingBuffer.getReadPointer(0, 0),
-                                              size);
+            // Copying from temp buffer to mono buffer data
+            juce::FloatVectorOperations::copy(monoBuffer.getWritePointer(0, monoBuffer.getNumSamples() - size), // copy to mono buffer with sample index shift next block 
+                                              tempIncomingBuffer.getReadPointer(0, 0),      // source temp incoming Buffer
+                                              size);                                        // Copy samples in Size data
             
             
-            
+            // Sending Buffers to FFT Data Generator //Producing FFT Data Blocks 
             leftChannelFFTDataGenerator.produceFFTDataForRendering(monoBuffer, -48.f);
             
         }
     }
     
+    // If there are fft data buffers to pull
+        // if we can pull a buffer
+            // generate a path
     
+//    const auto fftBounds = getAnalysisArea().toFloat();                   // Bounding box
+    const auto fftSize = leftChannelFFTDataGenerator.getFFTSize();          // get fftsize
     
-//    const auto fftBounds = getAnalysisArea().toFloat();
-    const auto fftSize = leftChannelFFTDataGenerator.getFFTSize();
-    const auto binWidth = sampleRate / (double)fftSize;
+    /*
+     44100 khz / 2048 Bins = 23Hz pro Band
+     */
+    const auto binWidth = sampleRate / (double)fftSize;                     //
     
+    // while it has fft blocks
     while (leftChannelFFTDataGenerator.getNumAvailableFFTDataBlocks() > 0)
     {
-        std::vector<float> fftdata;
+        // get fft blocks
+        std::vector<float> fftdata;     // History
         if ( leftChannelFFTDataGenerator.getFFTData(fftdata) )
         {
+            //if we able to pull fft blocks
             pathProducer.generatePath(fftdata, fftBounds, fftSize, binWidth, -48.f);
         }
     }
+    
+    
+    // while there are paths that can be pull
+    // pull as many as we can
+    // display the most recent
     
     while (pathProducer.getNumPathsAvailable() )
     {
@@ -108,7 +132,7 @@ void PathProducer::process(juce::Rectangle<float> fftBounds, double sampleRate)
 }
 
 
- // ==============================================================================
+ // ============================================================================== RESPONSECURVE // ==============================================================================
 
 void ResponseCurveComponent::timerCallback()
 {
@@ -120,7 +144,7 @@ void ResponseCurveComponent::timerCallback()
     leftPathProducer.process(fftBounds, samplerate);
     rightPathProducer.process(fftBounds, samplerate);
     
-    startTimer(1000/20);
+    startTimer(100/20);
     
     
     if (parametersChanged.compareAndSetBool(false, true) )
@@ -130,6 +154,7 @@ void ResponseCurveComponent::timerCallback()
     }
     
     repaint();
+    
 }
 
  // ==============================================================================
@@ -233,11 +258,10 @@ void ResponseCurveComponent::paint (juce::Graphics& g)
     //Spectrum
     
     
-//    auto leftChannelFFTPath = leftPathProducer.getPath();
-//    leftChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX(), responseArea.getY()));
-//
-    
     //
+    
+    
+    
     for ( auto y = 0; y < 5; y++ )
     {
         
@@ -245,80 +269,62 @@ void ResponseCurveComponent::paint (juce::Graphics& g)
         
         
         auto rightChannelFFTPath = rightPathProducer.getPath();
+        auto leftChannelFFTPath = leftPathProducer.getPath();
         
         // First Spec
-        rightChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX()+1, responseArea.getY()-0));
-        
+        rightChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX()+1, responseArea.getY()*y));
         g.setColour(colours[0+y]);
         
-        // Draw Specs wishing out
-        g.fillPath(rightChannelFFTPath,(AffineTransform().translation(responseArea.getX()+1, responseArea.getY()-0)));
         
+        
+        
+        leftChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX()+1, responseArea.getY()*y));
+        g.setColour(colours[0+y]);
+        
+
+        
+        // Draw Specs
+        g.strokePath(rightChannelFFTPath, PathStrokeType(1.f));
+        g.strokePath(leftChannelFFTPath, PathStrokeType(1.f));
+        
+//        PathStrokeType (float strokeThickness,
+//                        JointStyle jointStyle,
+//                        EndCapStyle endStyle = butt) noexcept;
+        
+
+//
+        
+        // FILL OUT
+//        g.fillPath(rightChannelFFTPath,(AffineTransform().translation(responseArea.getX()+1, responseArea.getY()-0)));
+        
+        
+        
+        // Draw Multiple Lines
         
         //Draw Lines to Wish out
-        for ( double y2 = 0.5; y2 >= 0.0; y2 -= 0.1)
-        {
-        rightChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX()+5, responseArea.getY()-1*10));
-        PathStrokeType pst(y2);
-        g.setColour(colours[0+y]);
-        
-//        ColourGradient gradient(juce::Colours::blue, responseArea.getX()/2,responseArea.getY()/2,
-//                             Colours::orange, responseArea.getX()/2,true);
+//        for ( double y2 = 0.5; y2 >= 0.0; y2 -= 0.1)
+//        {
 //
-//        g.setGradientFill(gradient);
-            
-            
-        g.strokePath(rightChannelFFTPath, PathStrokeType(y2));
-            
-        
-        }
-        
-        
-        for ( double y3 = 0; y3 < samplerate/10000; y3++)
-        {
-            rightChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX()+5, responseArea.getY()-1*10));
-            g.setColour(Colours::white);
-//            g.strokePath(rightChannelFFTPath(0);
-        }
-        
-        
-//        rightChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX()+3, responseArea.getY()-2*10));
-//        g.setColour(Colours::red);
-//        g.strokePath(rightChannelFFTPath, PathStrokeType(0.25f));
-//
-//        rightChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX()+4, responseArea.getY()-3*10));
-//        g.setColour(Colours::red);
-//        g.strokePath(rightChannelFFTPath, PathStrokeType(0.1f));
-//
-        
-//                for ( auto i = 0; i < samplerate/10000; i++ )
-//                {
-//
-//                    auto rightChannelFFTPath = rightPathProducer.getPath();
-//                    rightChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX()-y, responseArea.getY()-y*10));
-//
-////
-////                    auto leftChannelFFTPath = leftPathProducer.getPath();
-////                    leftChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX()-i, responseArea.getY()-i*10));
+//        rightChannelFFTPath.applyTransform(AffineTransform().translation(responseArea.getX()+5, responseArea.getY()-1*10));
+//        PathStrokeType pst(y2);
+//        g.setColour(colours[0+y]);
 //
 //
-////                        // Response curve Definition
-////                        g.setColour(Colours::white);
-////                        g.strokePath(leftChannelFFTPath, PathStrokeType(1.f));
-////
-//                    g.setColour(Colours::red);
-//                    g.strokePath(rightChannelFFTPath, PathStrokeType(1.f));
+//        //Response curve Definition
+//        g.setColour(Colours::white);
+//        g.strokePath(leftChannelFFTPath, PathStrokeType(1.f));
 //
-//                }
+//        g.strokePath(rightChannelFFTPath, PathStrokeType(y2));
 //
+//
+//        }
 //
     
     }
-            
-            // Response curve Definition
-            g.setColour(Colours::whitesmoke);
     
     
+    // Response curve Definition
+    g.setColour(Colours::whitesmoke);
     
     // g.strokePath(rightChannelFFTPath, PathStrokeType(1.f));
     
@@ -333,6 +339,7 @@ void ResponseCurveComponent::paint (juce::Graphics& g)
     
     
 }
+//============================================================================== EDITOR AREA //==============================================================================
 
 juce::Rectangle<int> ResponseCurveComponent::getRenderArea()
 {
@@ -354,7 +361,10 @@ juce::Rectangle<int> ResponseCurveComponent::getAnalysisArea()
     return bounds;
 }
 
-//==============================================================================
+//============================================================================== EDITOR //==============================================================================
+
+
+
 LAUTEQAudioProcessorEditor::LAUTEQAudioProcessorEditor (LAUTEQAudioProcessor& p)
     : AudioProcessorEditor (&p), audioProcessor (p),
 
@@ -429,10 +439,7 @@ void LAUTEQAudioProcessorEditor::resized()
     // This is generally where you'll want to lay out the positions of any
     // subcomponents in your editor..
     
-//    //dist
-//    disChoice.setBounds(50, 50, 200, 50);
-//    Threshold.setBounds(300, 25, 200, 50);
-//    Mix.setBounds(300, 75, 200, 50);
+    
     
     
     auto bounds = getLocalBounds();
@@ -444,16 +451,20 @@ void LAUTEQAudioProcessorEditor::resized()
     auto highCutArea = bounds.removeFromRight(bounds.getWidth() * 0.5);
 
     lowCutFreqSlider.setBounds(lowCutArea.removeFromTop(lowCutArea.getHeight() * 0.5));
-    lowCutSlopeSlider.setBounds(lowCutArea);
+//    lowCutSlopeSlider.setBounds(lowCutArea);
 
     highCutFreqSlider.setBounds(highCutArea.removeFromTop(highCutArea.getHeight() * 0.5));
-    highCutSlopeSlider.setBounds(highCutArea);
+    //highCutSlopeSlider.setBounds(highCutArea);
 
     peakFreqSlider.setBounds(bounds.removeFromTop(bounds.getHeight()* 0.33));
     peakGainSlider.setBounds(bounds.removeFromTop(bounds.getHeight()* 0.5));
     peakQualitySlider.setBounds(bounds);
     
     
+    //dist
+    disChoice.setBounds(lowCutArea.removeFromBottom(lowCutArea.getHeight() * 0.5));
+    Threshold.setBounds(highCutArea.removeFromTop(highCutArea.getHeight() * 0.5));
+    Mix.setBounds(highCutArea);
 }
 
 
